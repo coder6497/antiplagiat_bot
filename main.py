@@ -1,11 +1,8 @@
 import asyncio
 from telebot.async_telebot import AsyncTeleBot
 from config import token
-from random import randint
-import os
+from telebot import types
 import sqlalchemy as db
-
-
 
 bot = AsyncTeleBot(token)
 
@@ -15,37 +12,40 @@ metadata = db.MetaData()
 
 texts = db.Table('texts', metadata,
         db.Column("text_id", db.Integer, primary_key=True),
-            db.Column('text_data', db.Text))
+            db.Column('text', db.Text),
+            db.Column('user_id', db.Integer)
+                 )
 
 metadata.create_all(engine)
-
+buttons = ["Посмотреть тексты", "Проверить на антиплагиат", "/start", "О программе", "Удалить текст"]
 
 @bot.message_handler(commands=["start"])
 async def handle_start(message):
-    await bot.send_message(message.chat.id, "Введите первый текст затем второй")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    show_text = types.KeyboardButton(buttons[0])
+    for_gleb = types.KeyboardButton(buttons[3])
+    markup.add(show_text)
+    markup.add(for_gleb)
+    await bot.send_message(message.chat.id, "Введите тексты для проверки или посмотрите их", reply_markup=markup)
 
 
-@bot.message_handler(func=lambda message: True, content_types='text')
+@bot.message_handler(func=lambda message: True, content_types=['text', "photo"])
 async def handle_message(message):
-    with open(f"files/file{randint(1, 1000)}.txt", 'w', encoding='utf-8') as f:
-        f.write('\n'.join(message.text.split('.')))
-    with open(f"files/{os.listdir("files")[0]}", 'r', encoding='utf-8') as f:
-        data = f.read().split('\n')
-    with open(f"files/{os.listdir("files")[1]}", 'r', encoding='utf-8') as f:
-        data2 = f.read().split('\n')
-    count = 0
-    for i in range(len(data)):
-        for j in range(len(data2)):
-            if data[i] == data2[j]:
-                count += 1
-    if len(os.listdir('files')) >= 2:
-        await bot.send_message(message.chat.id, "Данные обработаны. Максимальное количество файлов достигнуто.")
-        await bot.send_message(message.chat.id, f"Кол-во совпадений в предложениях: {count}")
-        insertion_query = texts.insert().values([{"text_data": '\n'.join(data)},
-                                                 {"text_data": '\n'.join(data2)}])
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    check_antiplag = types.KeyboardButton(buttons[1])
+    back = types.KeyboardButton(buttons[2])
+    markup.add(check_antiplag)
+    markup.add(back)
+    if message.text not in buttons:
+        insertion_query = texts.insert().values({"text": '\n'.join(message.text.split('.')), "user_id": message.from_user.id})
         conn.execute(insertion_query)
         conn.commit()
-        list(map(lambda x: os.remove(f"files/{x}"), os.listdir('files')))
+    if message.text == buttons[0]:
+        rows = conn.execute(db.select(texts).where(texts.columns.user_id == message.from_user.id)).fetchall()
+        for row in rows:
+            await bot.send_message(message.chat.id, f"{row.text_id}.\t\n {row.text}", reply_markup=markup)
+        if len(rows) == 0:
+            await bot.send_message(message.chat.id, "У вас нет текстов", reply_markup=markup)
 
 
 asyncio.run(bot.infinity_polling())
