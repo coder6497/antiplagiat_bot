@@ -31,21 +31,27 @@ async def handle_start(message):
 
 @bot.message_handler(func=lambda message: True, content_types=['text', "photo"])
 async def handle_message(message):
+    rows = conn.execute(db.select(texts).where(texts.columns.user_id == message.from_user.id)).fetchall()
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     check_antiplag = types.KeyboardButton(buttons[1])
     back = types.KeyboardButton(buttons[2])
     markup.add(check_antiplag)
     markup.add(back)
-    if message.text not in buttons:
+    list(map(lambda x: markup.add(types.KeyboardButton(f'Удалить текст № {str(x.text_id)}')), rows))
+    if message.text not in buttons and message.text[:13] != "Удалить текст":
         insertion_query = texts.insert().values({"text": '\n'.join(message.text.split('.')), "user_id": message.from_user.id})
         conn.execute(insertion_query)
         conn.commit()
     if message.text == buttons[0]:
-        rows = conn.execute(db.select(texts).where(texts.columns.user_id == message.from_user.id)).fetchall()
         for row in rows:
             await bot.send_message(message.chat.id, f"{row.text_id}.\t\n {row.text}", reply_markup=markup)
         if len(rows) == 0:
             await bot.send_message(message.chat.id, "У вас нет текстов", reply_markup=markup)
+    for row in rows:
+        if message.text == f'Удалить текст № {str(row.text_id)}':
+            conn.execute(texts.delete().where(texts.columns.text_id == row.text_id).where(texts.columns.user_id == message.from_user.id))
+            conn.commit()
+            await bot.send_message(message.chat.id, f"Текст �� {row.text_id} удален", reply_markup=markup)
 
 
 asyncio.run(bot.infinity_polling())
