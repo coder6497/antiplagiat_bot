@@ -70,8 +70,4 @@ async def handle_message(message):
             if count < 5:
                 await bot.send_message(message.chat.id, "Тексты не совпадают ни на одной позиции, НЕ ПЛАГИАТ")
 
-
-
-
-
 asyncio.run(bot.infinity_polling())
